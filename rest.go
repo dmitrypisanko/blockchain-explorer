@@ -3,18 +3,13 @@ package main
 import (
 	"github.com/gin-gonic/gin"
 	"net/http"
-	//"strconv"
-	"github.com/davecgh/go-spew/spew"
-	//sq "gopkg.in/Masterminds/squirrel.v1"
-	//"strings"
-	//"fmt"
-	//"strings"
-	//"math/big"
 	"log"
 	"context"
 	"github.com/ethereum/go-ethereum/common"
 	"encoding/hex"
 	"github.com/mailru/dbr"
+	"strconv"
+	"strings"
 )
 
 func (rest *Rest) run() {
@@ -28,22 +23,18 @@ func (rest *Rest) run() {
 		})
 	})
 
-	/*
 	r.GET("/blocks/", func(c *gin.Context) {
-		limit := c.DefaultQuery("limit", "20")
-		offset := c.DefaultQuery("offset", "0")
-		sortField := c.DefaultQuery("sortField", "number")
+		limit, _ := strconv.ParseUint(c.DefaultQuery("limit", "20"), 10, 64)
+		offset, _ := strconv.ParseUint(c.DefaultQuery("offset", "0"), 10, 64)
+		sortField := c.DefaultQuery("sortField", "timestamp")
 		sortDirection := c.DefaultQuery("sortDirection", "desc")
 
-		request := sq.Select("*").From("blocks").OrderBy(strings.Join([]string{sortField, sortDirection}, " "))
-		sql, _, err := request.ToSql()
-
 		blocks := []TBlock{}
-		err = rest.db.Select(&blocks, strings.Join([]string{sql, "limit", offset, ",", limit}, " "))
+		query := rest.db.Select("*").From("blocks").Limit(limit).Offset(offset).OrderBy(strings.Join([]string{sortField, sortDirection}, " "))
 
-		spew.Dump(sql)
-		spew.Dump(strings.Join([]string{sql, "limit", offset, ",", limit}, " "))
-		spew.Dump(err)
+		if _, err := query.Load(&blocks); err != nil {
+			log.Fatal(err)
+		}
 
 		c.JSON(http.StatusOK, gin.H{
 			"data": blocks,
@@ -54,7 +45,10 @@ func (rest *Rest) run() {
 		number, _ := strconv.Atoi(c.Param("number"))
 
 		block := TBlock{}
-		err = rest.db.Get(&block, "SELECT * FROM blocks where number = ?", number)
+		query := rest.db.Select("*").From("blocks").Where("number = ?", number)
+		if _, err := query.Load(&block); err != nil {
+			log.Fatal(err)
+		}
 
 		c.JSON(http.StatusOK, gin.H{
 			"data": block,
@@ -65,57 +59,39 @@ func (rest *Rest) run() {
 		hash := c.Param("hash")
 
 		transaction := TTransaction{}
-		err = rest.db.Get(&transaction, "SELECT * FROM transactions where hash = ?", hash)
+		query := rest.db.Select("*").From("transactions").Where("hash = ?", hash)
+		if _, err := query.Load(&transaction); err != nil {
+			log.Fatal(err)
+		}
 
 		c.JSON(http.StatusOK, gin.H{
 			"data": transaction,
 		})
 	})
-	*/
+
 
 	r.GET("/transactions/", func(c *gin.Context) {
-		/*
-		limit := c.DefaultQuery("limit", "20")
-		offset := c.DefaultQuery("offset", "0")
+		limit, _ := strconv.ParseUint(c.DefaultQuery("limit", "20"), 10, 64)
+		offset, _ := strconv.ParseUint(c.DefaultQuery("offset", "0"), 10, 64)
 		sortField := c.DefaultQuery("sortField", "timestamp")
-		sortDirection := c.DefaultQuery("sortDirection", "desc")
+		blockNumber, _ := strconv.ParseUint(c.DefaultQuery("blockNumber", ""), 10, 64)
 		accountAddress := c.DefaultQuery("account", "")
-		blockNumber := c.DefaultQuery("blockNumber", "")
+		sortDirection := c.DefaultQuery("sortDirection", "desc")
 
-		request := sq.Select("*").From("transactions").OrderBy(strings.Join([]string{sortField, sortDirection}, " ")).Where(sq.Eq{"blockNumber": "1000"})
+		transactions := []TTransaction{}
+		query := rest.db.Select("*").From("transactions").Limit(limit).Offset(offset).OrderBy(strings.Join([]string{sortField, sortDirection}, " "))
 
 		if accountAddress != "" {
-			request = request.Where(sq.Or{sq.Eq{"from": accountAddress}, sq.Eq{"to": accountAddress}})
+			query = query.Where(dbr.Or(dbr.Eq("from", accountAddress), dbr.Eq("to", accountAddress)))
 		}
 
-		if blockNumber != "" {
-			request = request.Where("blockNumber = ?", blockNumber)
+		if blockNumber != 0 {
+			query = query.Where(dbr.Eq("blockNumber", blockNumber))
 		}
 
-		sql, _, err := request.ToSql()
-
-		spew.Dump(accountAddress)
-		spew.Dump(blockNumber)
-		spew.Dump(sql)
-		spew.Dump(strings.Join([]string{sql, "limit", offset, ",", limit}, " "))
-		spew.Dump(err)
-
-		transactions := []TTransaction{}
-		err = rest.db.Select(&transactions, strings.Join([]string{sql, "limit", offset, ",", limit}, " "))
-		*/
-
-		transactions := []TTransaction{}
-		query := rest.db.Select("*").From("transactions")
-		query.Where(dbr.Eq("blockNumber", 457872))
 		if _, err := query.Load(&transactions); err != nil {
 			log.Fatal(err)
 		}
-
-		spew.Dump(transactions)
-
-		//for _, item := range transactions {
-		//	//log.Printf("country: %s, os: %d, browser: %d, categories: %v, action_time: %s", item.CountryCode, item.OsID, item.BrowserID, item.Categories, item.ActionTime)
-		//}
 
 		c.JSON(http.StatusOK, gin.H{
 			"data": transactions,
@@ -154,15 +130,6 @@ func (rest *Rest) run() {
 				Code: hex.EncodeToString(bytecode),
 			},
 		})
-
-		/*
-		transactions := []TTransaction{}
-		err = rest.db.Select(&transactions, "SELECT * FROM transactions where from = ?", address)
-
-		c.JSON(http.StatusOK, gin.H{
-			"data": transactions,
-		})
-		*/
 	})
 
 	go r.Run()

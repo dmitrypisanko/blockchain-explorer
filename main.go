@@ -7,11 +7,6 @@ import (
 	"log"
 	"gopkg.in/yaml.v2"
 	"github.com/ethereum/go-ethereum/ethclient"
-	//"github.com/davecgh/go-spew/spew"
-
-	//_ "github.com/kshvakov/clickhouse"
-	//"github.com/jmoiron/sqlx"
-
 	"go.uber.org/zap"
 
 	_ "github.com/mailru/go-clickhouse"
@@ -38,7 +33,6 @@ func loadConf() TConfig {
 func main() {
 	config := loadConf()
 
-	//db, err := sqlx.Connect("clickhouse", config.Clickhouse)
 	connect, err := dbr.Open("clickhouse", config.Clickhouse, nil)
 	if err != nil {
 		log.Fatalln(err)
@@ -68,6 +62,6 @@ func main() {
 		db: db,
 	}
 
-	watcher.run(config.Threads)
+	watcher.run(config.Threads, config.BlockInterval)
 	select {}
 }

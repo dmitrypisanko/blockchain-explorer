@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/ethereum/go-ethereum/ethclient"
-	//"github.com/jmoiron/sqlx"
 	"github.com/mailru/dbr"
 	"go.uber.org/zap"
 )
@@ -31,7 +30,7 @@ type TTransaction struct {
 type TBlock struct {
 	Date string					`db:"date"`
 	Number uint64				`db:"number"`
-	Timestamp uint64			`db:"timestamp"`
+	Timestamp int64			`db:"timestamp"`
 	Hash string					`db:"hash"`
 	ParentHash string			`db:"parentHash"`
 	UncleHash string			`db:"uncleHash"`
@@ -39,8 +38,8 @@ type TBlock struct {
 	GasUsed uint64				`db:"gasUsed"`
 	GasLimit uint64				`db:"gasLimit"`
 	Nonce uint64				`db:"nonce"`
-	Size float64				`db:"size"`
-	TransactionsCount uint64	`db:"transactionsCount"`
+	Size string				`db:"size"`
+	TransactionsCount int	`db:"transactionsCount"`
 	Difficulty uint64			`db:"difficulty"`
 	Extra string				`db:"extra"`
 }
@@ -55,7 +54,6 @@ type TAccount struct {
 
 type Watcher struct {
 	etherClient *ethclient.Client
-	//db *sqlx.DB
 	db *dbr.Session
 	logger *zap.Logger
 	lastParsedBlockNumber int64
@@ -64,7 +62,6 @@ type Watcher struct {
 }
 
 type Rest struct {
-	//db *sqlx.DB
 	db *dbr.Session
 	etherClient *ethclient.Client
 }

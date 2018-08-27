@@ -8,10 +8,11 @@ import (
 	"github.com/vjeantet/jodaTime"
 	"math/big"
 	"go.uber.org/zap"
+	"github.com/davecgh/go-spew/spew"
 )
 
 func (watcher *Watcher) parseBlock(blockNumber int64) {
-	//watcher.logger.Info("Parse block", zap.Int64("number", blockNumber))
+	watcher.logger.Info("Parse block", zap.Int64("number", blockNumber))
 
 	block, err := watcher.etherClient.BlockByNumber(context.Background(), big.NewInt(blockNumber))
 	if err != nil {
@@ -27,7 +28,12 @@ func (watcher *Watcher) parseBlock(blockNumber int64) {
 
 	date := jodaTime.Format("YYYY-MM-dd", time.Unix(timestamp, 0))
 
-	transactions := []TTransaction{}
+	tx, err := watcher.db.Begin()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer tx.RollbackUnlessCommitted()
+
 	for _, tx := range block.Transactions() {
 		if msg, err := tx.AsMessage(types.HomesteadSigner{}); err == nil {
 			to := ""
@@ -35,7 +41,7 @@ func (watcher *Watcher) parseBlock(blockNumber int64) {
 				to = tx.To().Hex()
 			}
 
-			transactions = append(transactions, TTransaction{
+			transaction := TTransaction{
 				Date: 			date,
 				BlockNumber: 	block.NumberU64(),
 				Hash:        	tx.Hash().Hex(),
@@ -47,23 +53,39 @@ func (watcher *Watcher) parseBlock(blockNumber int64) {
 				From:      		msg.From().Hex(),
 				Timestamp: 		block.Time().Uint64(),
 				//Data: tx.Data(),
-			})
-
-			//dbTX := watcher.db.MustBegin()
-			//dbTX.MustExec(
-			//	"INSERT INTO transactions (date, timestamp, hash, blockNumber, value, gasUsed, gasPrice, nonce, to, from) VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $7, $8, $9, $10)",
-			//	date, block.Time().Uint64(), tx.Hash().Hex(), block.NumberU64(), tx.Value().String(), tx.Gas(), tx.GasPrice().Uint64(), tx.Nonce(), to, msg.From().Hex(),
-			//)
-			//dbTX.Commit()
+			}
+			_, err = watcher.db.InsertInto("transactions").Columns("date", "timestamp", "hash", "blockNumber", "value", "gasUsed", "gasPrice", "nonce", "to", "from").Record(transaction).Exec()
+			if err != nil {
+				watcher.logger.Error("Insert transaction")
+				spew.Dump(err)
+			}
 		}
 	}
 
-	//dbTX := watcher.db.MustBegin()
-	//dbTX.MustExec(
-	//	"INSERT INTO blocks (date, timestamp, hash, number, gasUsed, gasLimit, nonce, size, transactionsCount, difficulty, extra, parentHash, uncleHash, minedBy) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
-	//	date, timestamp, block.Hash().Hex(), block.NumberU64(), block.GasUsed(), block.GasLimit(), block.Nonce(), block.Size(), len(block.Transactions()), block.Difficulty().Uint64(), string(block.Extra()[:]), block.ParentHash().Hex(), block.UncleHash().Hex(), block.Coinbase().Hex(),
-	//)
-	//dbTX.Commit()
+	blockInfo := TBlock{
+		Date: date,
+		Timestamp: timestamp,
+		Hash: block.Hash().Hex(),
+		Number: block.NumberU64(),
+		GasUsed: block.GasUsed(),
+		GasLimit: block.GasLimit(),
+		Nonce :block.Nonce(),
+		Size: block.Size().String(),
+		TransactionsCount: len(block.Transactions()),
+		Difficulty: block.Difficulty().Uint64(),
+		Extra: string(block.Extra()[:]),
+		ParentHash: block.ParentHash().Hex(),
+		UncleHash: block.UncleHash().Hex(),
+		MinedBy: block.Coinbase().Hex(),
+	}
+
+	_, err = watcher.db.InsertInto("blocks").Columns("date", "timestamp", "hash", "number", "gasUsed", "gasLimit", "nonce", "size", "transactionsCount", "difficulty", "extra", "parentHash", "uncleHash", "minedBy").Record(blockInfo).Exec()
+	if err != nil {
+		watcher.logger.Error("Insert block")
+		spew.Dump(err)
+	}
+
+	tx.Commit()
 }
 
 func (watcher *Watcher) queueWatcher() {
@@ -98,23 +120,24 @@ func (watcher *Watcher) blockWatcher(timeout int) {
 	}
 }
 
-func (watcher *Watcher) run(threads int) {
+func (watcher *Watcher) run(threads int, blockInterval int) {
 	watcher.getLastBlock()
 
-	//var blocks []struct {
-	//	Number int64 `db:"number"`
-	//}
+	var blocks []struct {
+		Number int64 `db:"number"`
+	}
 
-	////if err := watcher.db.Select(&blocks, "SELECT number FROM blocks order by number asc"); err != nil {
-	////	log.Fatal(err)
-	////}
-	//
-	//watcher.logger.Info("Blocks in DB", zap.Int("number", len(blocks)))
-	//
+	query := watcher.db.Select("*").From("blocks").OrderBy("number asc")
+	if _, err := query.Load(&blocks); err != nil {
+		log.Fatal(err)
+	}
+
+	watcher.logger.Info("Blocks in DB", zap.Int("number", len(blocks)))
+
 	blockHash := map[int64]int {}
-	//for _, item := range blocks {
-	//	blockHash[item.Number] = 1
-	//}
+	for _, item := range blocks {
+		blockHash[item.Number] = 1
+	}
 
 	watcher.queue = make(chan int64, threads)
 	for w := 0; w < threads; w++ {
@@ -125,14 +148,14 @@ func (watcher *Watcher) run(threads int) {
 		_, ok := blockHash[i]
 		if !ok {
 			if i%10000 == 0 {
-				//watcher.logger.Info("Send block to queue", zap.Int64("number", i))
+				watcher.logger.Info("Send block to queue", zap.Int64("number", i))
 			}
 
-			//api.queue <- i
+			watcher.queue <- i
 		}
 
 		watcher.lastParsedBlockNumber = int64(i)
 	}
 
-	//go watcher.blockWatcher(config.BlockInterval)
+	go watcher.blockWatcher(blockInterval)
 }

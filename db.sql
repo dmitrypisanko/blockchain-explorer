@@ -24,7 +24,7 @@ CREATE TABLE sonm.blocks (
     gasUsed UInt64,
     gasLimit UInt64,
     nonce UInt64,
-    size Float64,
+    size String,
     transactionsCount UInt64,
     difficulty UInt64,
     extra String
