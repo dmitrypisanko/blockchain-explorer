@@ -1,0 +1,5 @@
+node_url: "https://mainnet.infura.io"
+//clickhouse: "tcp://127.0.0.1:9000?database=sonm"
+clickhouse: "http://127.0.0.1:32771/sonm"
+threads: 25
+blockInterval: 10
